@@ -63,24 +63,6 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.FileServer(http.Dir(h.staticPath)).ServeHTTP(w, r)
 }
 
-func serveWs(pool *websocket.Pool) func(claims *auth.Claims, w http.ResponseWriter, r *http.Request)  {
-	return func(claims *auth.Claims,w http.ResponseWriter, r *http.Request) {
-		conn, err := websocket.Upgrade(w, r)
-		if err != nil {
-			fmt.Fprintf(w, "%+v\n", err)
-			w.WriteHeader(http.StatusBadRequest)
-		}
-
-		client := &websocket.Client{
-			Conn: conn,
-			Pool: pool,
-		}
-
-		pool.Register <- client
-		client.Read()
-	}
-}
-
 func main() {
 	fmt.Println("Chat App v0.01")
 	router := mux.NewRouter()
@@ -92,7 +74,7 @@ func main() {
 	router.HandleFunc("/signin", auth.Signin)
 
 	// conenct websocket
-	router.HandleFunc("/ws", auth.WithClaims(serveWs(pool)))
+	router.HandleFunc("/ws", auth.Authorised(pool.ServeWsCreateClient()))
 
 	router.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		// an example API handler

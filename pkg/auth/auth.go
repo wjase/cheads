@@ -2,6 +2,7 @@ package auth
 
 import (
 	//...
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -70,6 +71,8 @@ func Signin(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	fmt.Printf("Create new user token for %s\n", creds.Username)
+
 	// Declare the token with the algorithm used for signing, and the claims
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	// Create the JWT string
@@ -94,12 +97,12 @@ func Signin(w http.ResponseWriter, r *http.Request) {
 
 // AuthnError error for authentication
 type AuthnError struct {
-	msg    string
-	status int
+	Msg    string
+	Status int
 }
 
 func (e *AuthnError) Error() string {
-	return fmt.Sprintf("Authentication error: %d -%s", e.status, e.msg)
+	return fmt.Sprintf("Authentication error: %d -%s", e.Status, e.Msg)
 }
 
 // GetTokenClaimsFromCookie returns the claims from the request cookie
@@ -124,10 +127,8 @@ func GetTokenClaimsFromCookie(r *http.Request) (*Claims, error) {
 // GetTokenClaimsFromParam returns the claims from the request cookie
 func GetTokenClaimsFromParam(r *http.Request) (*Claims, error) {
 	// We can obtain the token from the requests token param
-	fmt.Printf("%v\n", r.URL.Query())
 	if token, ok := r.URL.Query()["token"]; ok {
 		tknStr := token[0]
-		fmt.Printf("got claim")
 
 		return ClaimsFromToken(tknStr)
 	}
@@ -163,57 +164,50 @@ func ClaimsFromToken(tknStr string) (*Claims, error) {
 	return claims, nil
 }
 
-//WithClaims  wraps a http handler in a jwt check
-func WithClaims(authFn AuthorisedFn) func(w http.ResponseWriter, r *http.Request) {
+// GetTokenClaimsFromRequest gets token from either cookie or param
+func GetTokenClaimsFromRequest(r *http.Request) (*Claims, error) {
+	claims, err := GetTokenClaimsFromCookie(r)
+	if err != nil {
+		return nil, err
+	}
+	if claims == nil {
+		claims, err = GetTokenClaimsFromParam(r)
+	}
+	if err != nil {
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if claims == nil {
+		return nil, &AuthnError{"Invalid token", http.StatusUnauthorized}
+	}
+
+	return claims, nil
+}
+
+// ContextKey a string key
+type ContextKey string
+
+// ContextClaimsKey string constant for accessing claims from the request context
+const ContextClaimsKey ContextKey = "claims"
+
+//Authorised wraps a http handler in a jwt check
+func Authorised(fn func(w http.ResponseWriter, r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		claims, err := GetTokenClaimsFromParam(r)
+		claims, err := GetTokenClaimsFromRequest(r)
 		if err != nil {
 			if err, ok := err.(*AuthnError); ok {
 				fmt.Println(err)
-				w.WriteHeader(err.status)
+				w.WriteHeader(err.Status)
 				return
 			}
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		authFn(claims, w, r)
 
-	}
-}
-
-// Authorised wraps a handler in an auh check
-func Authorised(handler func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		claims, err := GetTokenClaimsFromCookie(r)
-		if err != nil {
-			if err, ok := err.(*AuthnError); ok {
-				fmt.Println(err)
-				w.WriteHeader(err.status)
-				return
-			}
-			fmt.Println(err)
-			return
-		}
-		if claims == nil {
-			claims, err = GetTokenClaimsFromParam(r)
-		}
-		if err != nil {
-			if err, ok := err.(*AuthnError); ok {
-				fmt.Println(err)
-				w.WriteHeader(err.status)
-				return
-			}
-			fmt.Println(err)
-			return
-		}
-
-		if claims == nil {
-			w.WriteHeader(http.StatusForbidden)
-			return
-		}
-		// Finally, return the welcome message to the user, along with their
-		// username given in the token
-		handler(w, r)
+		ctx := context.WithValue(r.Context(), ContextClaimsKey, claims)
+		fn(w, r.WithContext(ctx))
 	}
 }
 
@@ -223,7 +217,7 @@ func Refresh(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err, ok := err.(*AuthnError); ok {
 			fmt.Println(err)
-			w.WriteHeader(err.status)
+			w.WriteHeader(err.Status)
 			return
 		}
 		fmt.Println(err)
