@@ -1,30 +1,135 @@
 package game
 
-// PlayerAdded fired when a player has joined the game
-type PlayerAdded func(player Player)
+import "fmt"
 
-// PlayerUpdated fired when a player leaves the game
-type PlayerUpdated func(player Player)
+//go:generate mockgen -destination=../mock_game/MockPlayerHub.go	-package=mock_game . PlayerHub
 
-// Fired when a game starts
-type Started func()
+// PlayerHub for game communication
+type PlayerHub interface {
+	// Send event to all Players
+	Broadcast(msg *Event)
+	// Send Event to single Player
+	SendEvent(toID string, evt Event)
 
-// Fired When a game state is updated
-type Updated func()
+	Subscribe(listener interface{})
 
-// Hub - a shared game space
-// A hub has players who each have their own state (eg piece position , cards etc)
-// The hub may have it's own state: eg card decks discard piles etc (current player/team etc)
-type Hub interface {
-	AddPlayer(player Player)
+	// Gets a specific player
 	GetPlayer(ID string) (Player, error)
-	Start() error
+	GetPlayers() map[string]Player
+	// // PlayerJoined called when a new player joins the game
+	// PlayerJoined(player *Player)
+
+	// // PlayerLeft called when players leave
+	// PlayerLeft(player *Player)
+}
+
+// Engine Generic game logic implemented here
+type Engine interface {
+	// Runs the GameLoop
+	Run() error
+
+	// Reset reset the game state
 	Reset() error
-	GetState() map[string]interface{}
-	GetStateFor(id string) interface{}
-	PutStateFor(id string, state interface{})
-	RegisterPlayerAdded(fn PlayerAdded)
-	RegisterPlayerUpdated(fn PlayerUpdated)
-	RegisterStarted(fn Started)
-	RegisterUpdated(fn Started)
+
+	// OnEvent when a game event occurs
+	OnEvent(evt *Event)
+}
+
+// PlayerLeftListener implement this to respond to left events
+type PlayerLeftListener interface {
+	PlayerLeft(player Player)
+}
+
+// Event generic event envelope
+// The message will contain one non-null payload
+type Event struct {
+	// The source of the event
+	FromID        string
+	PlayerJoined  *PlayerJoinedEvent  `json:"player_joined"`
+	PlayerLeft    *PlayerLeftEvent    `json:"player_left"`
+	PlayerUpdated *PlayerUpdatedEvent `json:"player_updated"`
+	Updated       *UpdatedEvent       `json:"game_updated"`
+	TextMessage   *TextMessageEvent   `json:"text_message"`
+}
+
+// TriggerOn If the receiver can handle the event then fire it
+// if not ignore it
+// In order to handle an event, simply implment the right handler method
+// on the receiver
+func (e *Event) TriggerOn(receiver interface{}) {
+	switch {
+	case e.PlayerJoined != nil:
+		if listener, ok := receiver.(PlayerJoinedListener); ok {
+			listener.PlayerJoined(e.PlayerJoined.Player)
+		}
+	case e.PlayerLeft != nil:
+		if listener, ok := receiver.(PlayerLeftListener); ok {
+			listener.PlayerLeft(e.PlayerLeft.Player)
+		}
+	case e.PlayerUpdated != nil:
+		if listener, ok := receiver.(PlayerUpdatedListener); ok {
+			listener.PlayerUpdated(e.FromID, e.PlayerUpdated.Player)
+		}
+	case e.Updated != nil:
+		if listener, ok := receiver.(UpdatedListener); ok {
+			listener.Updated(e.FromID, e.Updated.StateID, e.Updated.State)
+		}
+	case e.TextMessage != nil:
+		if listener, ok := receiver.(TextMessageListener); ok {
+			listener.TextMessage(e.FromID, e.TextMessage.ToID, e.TextMessage.MessageText)
+		}
+
+	default:
+		fmt.Printf("Unnknown event type")
+	}
+
+}
+
+// TextMessageListener implement this to respond to joined events
+type TextMessageListener interface {
+	TextMessage(FromID string, ToID string, MessageText string)
+}
+
+// TextMessageEvent Used for player chat
+type TextMessageEvent struct {
+	ToID        string `json:"to_id"`
+	MessageText string `json:"message_text"`
+}
+
+// PlayerJoinedListener implement this to respond to joined events
+type PlayerJoinedListener interface {
+	PlayerJoined(player Player)
+}
+
+// PlayerJoinedEvent - when a player is added
+type PlayerJoinedEvent struct {
+	Player Player `json:"player"`
+}
+
+// PlayerLeftEvent - when a player leaves
+type PlayerLeftEvent struct {
+	Player Player `json:"player"`
+}
+
+// PlayerUpdatedListener implement this to respond to joined events
+type PlayerUpdatedListener interface {
+	PlayerUpdated(FromID string, player Player)
+}
+
+// PlayerUpdatedEvent - when a player is updated
+type PlayerUpdatedEvent struct {
+	Player  Player      `json:"player"`
+	StateID string      `json:"state_id"`
+	State   interface{} `json:"state"`
+}
+
+// UpdatedListener implement this to respond to joined events
+type UpdatedListener interface {
+	Updated(FromID string, StateID string, State interface{})
+}
+
+// UpdatedEvent Fired When a game state is updated
+type UpdatedEvent struct {
+	StateID string      `json:"state_id"`
+	State   interface{} `json:"state"`
 }

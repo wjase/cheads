@@ -2,10 +2,14 @@
 var url = "ws://"+window.location.hostname+":8000/ws";
 var socket = null;
 
-let connect = (token,callbackFn) => {
+let start = (token,callbackFn) => {
+  join(token,callbackFn)
+}
+
+let join = (token,callbackFn,gameId="") => {
   if(socket==null){
     console.log("Attempting Connection...");
-    socket = new WebSocket(url+"?token="+token);
+    socket = new WebSocket(url+"?token="+token+(gameId!==""?"&gameId="+gameId:""));
   }
 
   socket.onopen = () => {
@@ -28,4 +32,4 @@ let sendMsg = msg => {
   socket.send(msg);
 };
 
-export { connect, sendMsg };
+export { join, sendMsg };

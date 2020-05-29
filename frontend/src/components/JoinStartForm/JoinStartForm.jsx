@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import "./JoinStartForm.scss";
-import { connect, sendMsg } from "../../api";
+// import { sendMsg } from "../../api";
 
-function send(msg) {
-  console.log(msg);
-  sendMsg(msg);
-}
+// function send(msg) {
+//   console.log(msg);
+//   sendMsg(msg);
+// }
 
 function onSubmit(event, resultFn) {
   event.preventDefault();
@@ -35,7 +35,8 @@ function onSubmit(event, resultFn) {
 
 const JoinStartForm = function(show){
   const [userData, setUserData] = useState({ "user": "" });
-  let onJoin = ()=>{
+  let onJoin = (data)=>{
+    setUserData(data)
   };
   
   let onStartGame = ()=>{
@@ -55,7 +56,7 @@ const JoinStartForm = function(show){
     </div>
   );
   
-  if(userData.user!=""){
+  if(userData.user!==""){
     comp=(
     <div>Totes logged in as{userData.user}</div>
     );

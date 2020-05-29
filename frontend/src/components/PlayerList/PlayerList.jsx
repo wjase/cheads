@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import "./PlayerList.scss";
-import { connect, sendMsg } from "../../api";
+import { sendMsg } from "../../api";
 
 function send(msg) {
   sendMsg(msg);
